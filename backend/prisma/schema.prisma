@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  businessName String   @map("business_name") @db.VarChar(255)
+  email        String   @unique @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  balances         AccountBalance[]
+  sentTransactions Transaction[]
+  ledgerEntries    LedgerEntry[]
+
+  @@map("accounts")
+}
+
+model AccountBalance {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId     String   @map("account_id") @db.Uuid
+  currency      String   @db.Char(3)
+  balance       Decimal  @default(0) @db.Decimal(20, 6)
+  lockedBalance Decimal  @default(0) @map("locked_balance") @db.Decimal(20, 6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, currency])
+  @@map("account_balances")
+}
+
+model FxQuote {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceCurrency      String   @map("source_currency") @db.Char(3)
+  destinationCurrency String   @map("destination_currency") @db.Char(3)
+  rate                Decimal  @db.Decimal(20, 8)
+  expiresAt           DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  transactions Transaction[]
+
+  @@index([expiresAt])
+  @@map("fx_quotes")
+}
+
+model IdempotencyKey {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotencyKey String   @unique @map("idempotency_key") @db.VarChar(255)
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("idempotency_keys")
+}
+
+enum TransactionStatus {
+  initiated
+  processing
+  completed
+  failed
+  reversed
+}
+
+model Transaction {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference         String            @unique @db.VarChar(50)
+  senderAccountId   String            @map("sender_account_id") @db.Uuid
+  recipientName     String            @map("recipient_name") @db.VarChar(255)
+  recipientCountry  String            @map("recipient_country") @db.Char(2)
+  recipientCurrency String            @map("recipient_currency") @db.Char(3)
+  sourceCurrency    String            @map("source_currency") @db.Char(3)
+  sourceAmount      Decimal           @map("source_amount") @db.Decimal(20, 6)
+  destinationAmount Decimal           @map("destination_amount") @db.Decimal(20, 6)
+  fxRate            Decimal           @map("fx_rate") @db.Decimal(20, 8)
+  fxQuoteId         String?           @map("fx_quote_id") @db.Uuid
+  status            TransactionStatus @default(initiated)
+  providerReference String?           @map("provider_reference") @db.VarChar(255)
+  idempotencyKey    String?           @map("idempotency_key") @db.VarChar(255)
+  failureReason     String?           @map("failure_reason")
+  initiatedAt       DateTime          @default(now()) @map("initiated_at") @db.Timestamptz(6)
+  processingAt      DateTime?         @map("processing_at") @db.Timestamptz(6)
+  completedAt       DateTime?         @map("completed_at") @db.Timestamptz(6)
+  failedAt          DateTime?         @map("failed_at") @db.Timestamptz(6)
+  reversedAt        DateTime?         @map("reversed_at") @db.Timestamptz(6)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  senderAccount Account                    @relation(fields: [senderAccountId], references: [id])
+  fxQuote       FxQuote?                   @relation(fields: [fxQuoteId], references: [id])
+  statusHistory TransactionStatusHistory[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([status])
+  @@index([senderAccountId])
+  @@index([providerReference])
+  @@index([createdAt(sort: Desc)])
+  @@map("transactions")
+}
+
+model TransactionStatusHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  fromStatus    String?  @map("from_status") @db.VarChar(20)
+  toStatus      String   @map("to_status") @db.VarChar(20)
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@index([transactionId])
+  @@map("transaction_status_history")
+}
+
+enum LedgerEntryType {
+  debit
+  credit
+  reversal_credit
+  fx_fee
+}
+
+model LedgerEntry {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId String          @map("transaction_id") @db.Uuid
+  accountId     String          @map("account_id") @db.Uuid
+  currency      String          @db.Char(3)
+  amount        Decimal         @db.Decimal(20, 6)
+  entryType     LedgerEntryType @map("entry_type")
+  description   String?
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  account     Account     @relation(fields: [accountId], references: [id])
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@map("ledger_entries")
+}
+
+enum WebhookProcessingStatus {
+  received
+  processed
+  failed
+  ignored
+}
+
+model WebhookEvent {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerReference String?                 @map("provider_reference") @db.VarChar(255)
+  rawHeaders        Json                    @map("raw_headers")
+  rawBody           String                  @map("raw_body")
+  signature         String?                 @db.VarChar(512)
+  processingStatus  WebhookProcessingStatus @default(received) @map("processing_status")
+  processingError   String?                 @map("processing_error")
+  processedAt       DateTime?               @map("processed_at") @db.Timestamptz(6)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([providerReference])
+  @@index([createdAt(sort: Desc)])
+  @@map("webhook_events")
+}
