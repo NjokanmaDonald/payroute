@@ -127,7 +127,6 @@ payroute/
 │       ├── pages/           # TransactionList, PaymentForm, TransactionDetail
 │       └── utils/
 ├── docker-compose.yml
-├── ANALYSIS.md              # Written analysis (Part 4)
 └── README.md
 ```
 
@@ -142,12 +141,3 @@ payroute/
 5. Observe the status timeline and ledger entries update
 
 ---
-
-## Assumptions and Deliberate Tradeoffs
-
-- **FX rates are hardcoded** in `fxService.js`. In production these would come from a live rate provider (e.g., Open Exchange Rates) and be cached with TTL.
-- **Recipients are not separate accounts**. For simplicity, "recipient" is modelled as attributes on the transaction. In production, recipients would be a first-class entity with KYC data, bank account details, and compliance checks.
-- **The system float account** (`00000000-0000-0000-0000-000000000001`) is used as the counter-entry for all ledger entries. In production this would be split into multiple functional accounts (suspense, nostro, FX P&L).
-- **No authentication/authorization**. The API has no auth layer. In production every endpoint would require JWT/API key auth with role-based access.
-- **Webhook simulate endpoint** is not protected. In production this would be gated to internal/ops networks only.
-- **Tests require a live DB**. Integration tests against a real DB are more valuable than unit tests with mocked queries for payment logic, but they require more setup. A future improvement would be a test container that spins up automatically.
